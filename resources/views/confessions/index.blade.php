@@ -4,66 +4,56 @@
 
 @section('content')
 
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h4 class="mb-0">Student Confessions</h4>
-    <a href="{{ route('confessions.create') }}" class="btn btn-dark">+ Submit Confession</a>
+<div class="feed-column">
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0 text-primary fw-bold">
+        <i class="bi bi-chat-heart me-2"></i>Student Confessions
+    </h4>
+    <a href="{{ route('confessions.create') }}" class="btn btn-primary btn-sm">
+        <i class="bi bi-plus-lg me-1"></i> Submit
+    </a>
 </div>
 
-{{-- Filter --}}
-<form method="GET" action="{{ route('confessions.index') }}" class="row g-2 align-items-center mb-4">
-    <div class="col-auto">
-        <select name="category" class="form-select form-select-sm" onchange="this.form.submit()">
+<div class="filter-bar d-flex flex-wrap align-items-center gap-3">
+    <form method="GET" action="{{ route('confessions.index') }}" class="d-flex align-items-center gap-2">
+        <label class="text-muted small mb-0"><i class="bi bi-funnel"></i> Category:</label>
+        <select name="category_id" class="form-select form-select-sm" style="width: auto;" onchange="this.form.submit()">
             <option value="">All Categories</option>
-            @foreach($categories as $cat)
-                <option value="{{ $cat }}" {{ request('category') === $cat ? 'selected' : '' }}>
-                    {{ $cat }}
+            @foreach($categories as $category)
+                <option value="{{ $category->id }}" {{ request('category_id') == $category->id ? 'selected' : '' }}>
+                    {{ $category->name }}
                 </option>
             @endforeach
         </select>
-    </div>
-    @if(request('category'))
-    <div class="col-auto">
+        @if(request('category_id'))
         <a href="{{ route('confessions.index') }}" class="btn btn-sm btn-outline-secondary">Clear</a>
-    </div>
-    @endif
-    <div class="col text-end text-muted small">
-        {{ $confessions->total() }} confession(s)
-    </div>
-</form>
-
-{{-- List --}}
-@forelse($confessions as $confession)
-<div class="card mb-3">
-    <div class="card-body">
-        <div class="d-flex justify-content-between align-items-start">
-            <div>
-                <h6 class="card-title mb-1">
-                    <a href="{{ route('confessions.show', $confession) }}" class="text-dark text-decoration-none">
-                        {{ $confession->title }}
-                    </a>
-                </h6>
-                <span class="badge bg-secondary">{{ $confession->category }}</span>
-            </div>
-            <small class="text-muted">{{ $confession->created_at->diffForHumans() }}</small>
-        </div>
-        <p class="card-text text-muted mt-2 mb-2" style="font-size: 0.9rem;">
-            {{ Str::limit($confession->description, 200) }}
-        </p>
-        <a href="{{ route('confessions.show', $confession) }}" class="btn btn-sm btn-outline-dark">Read more</a>
-    </div>
+        @endif
+    </form>
+    <span class="text-muted small ms-md-auto">
+        <i class="bi bi-journal-text"></i> {{ $confessions->total() }} confession(s)
+    </span>
 </div>
+
+@forelse($confessions as $confession)
+    @include('partials.confession-card', ['confession' => $confession, 'likedIds' => $likedIds])
 @empty
-<div class="text-center text-muted py-5">
-    <p>No confessions yet.</p>
-    <a href="{{ route('confessions.create') }}" class="btn btn-dark">Be the first to submit</a>
+<div class="card card-kiu empty-state">
+    <i class="bi bi-inbox d-block"></i>
+    <h5 class="text-primary">No confessions yet</h5>
+    <p class="mb-3">Be the first to share something with the KIU community.</p>
+    <a href="{{ route('confessions.create') }}" class="btn btn-primary">
+        <i class="bi bi-pencil-square me-1"></i> Submit the first confession
+    </a>
 </div>
 @endforelse
 
-{{-- Pagination --}}
 @if($confessions->hasPages())
 <div class="d-flex justify-content-center mt-4">
     {{ $confessions->links() }}
 </div>
 @endif
+
+</div>{{-- /.feed-column --}}
 
 @endsection

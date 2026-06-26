@@ -7,28 +7,20 @@
 <div class="row justify-content-center">
     <div class="col-md-7">
 
-        <a href="{{ route('admin.index', ['key' => request('key')]) }}"
-           class="text-secondary text-decoration-none d-inline-block mb-3">
-            &larr; Back to Admin Panel
+        <a href="{{ route('admin.index') }}" class="back-link d-inline-flex align-items-center gap-1 mb-3">
+            <i class="bi bi-arrow-left"></i> Back to Admin Panel
         </a>
 
-        <h4 class="mb-4">Edit Confession #{{ $confession->id }}</h4>
-
-        @if($errors->any())
-        <div class="alert alert-danger">
-            <ul class="mb-0 ps-3">
-                @foreach($errors->all() as $error)
-                <li>{{ $error }}</li>
-                @endforeach
-            </ul>
+        <div class="page-header">
+            <h4><i class="bi bi-pencil text-primary me-2"></i>Edit Confession #{{ $confession->id }}</h4>
         </div>
-        @endif
 
-        <div class="card">
-            <div class="card-body">
-                <form method="POST" action="{{ route('admin.update', $confession) }}">
+        @include('partials.form-errors')
+
+        <div class="card card-kiu">
+            <div class="card-body p-4">
+                <form method="POST" action="{{ route('admin.update', $confession) }}" enctype="multipart/form-data">
                     @csrf @method('PUT')
-                    <input type="hidden" name="key" value="{{ request('key') }}" />
 
                     <div class="mb-3">
                         <label class="form-label fw-semibold" for="title">Title</label>
@@ -39,15 +31,30 @@
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label fw-semibold" for="category">Category</label>
-                        <select class="form-select @error('category') is-invalid @enderror" name="category" id="category">
-                            @foreach($categories as $cat)
-                            <option value="{{ $cat }}" {{ old('category', $confession->category) === $cat ? 'selected' : '' }}>
-                                {{ $cat }}
+                        <label class="form-label fw-semibold" for="category_id">Category</label>
+                        <select class="form-select @error('category_id') is-invalid @enderror" name="category_id" id="category_id">
+                            @foreach($categories as $category)
+                            <option value="{{ $category->id }}" {{ old('category_id', $confession->category_id) == $category->id ? 'selected' : '' }}>
+                                {{ $category->name }}
                             </option>
                             @endforeach
                         </select>
-                        @error('category') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                        @error('category_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Tags</label>
+                        <div class="d-flex flex-wrap gap-2">
+                            @foreach($tags as $tag)
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="tags[]"
+                                       value="{{ $tag->id }}" id="tag-{{ $tag->id }}"
+                                       {{ in_array($tag->id, old('tags', $confession->tags->pluck('id')->all())) ? 'checked' : '' }} />
+                                <label class="form-check-label" for="tag-{{ $tag->id }}">{{ $tag->name }}</label>
+                            </div>
+                            @endforeach
+                        </div>
+                        @error('tags') <div class="text-danger small mt-1">{{ $message }}</div> @enderror
                     </div>
 
                     <div class="mb-3">
@@ -68,6 +75,25 @@
                         @error('status') <div class="invalid-feedback">{{ $message }}</div> @enderror
                     </div>
 
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" for="image">Image</label>
+                        @if($confession->imageUrl())
+                        <div class="mb-2">
+                            <img src="{{ $confession->imageUrl() }}" alt="Current image"
+                                 class="img-fluid rounded" style="max-height: 200px;" />
+                        </div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="remove_image" value="1"
+                                   id="remove_image" {{ old('remove_image') ? 'checked' : '' }} />
+                            <label class="form-check-label" for="remove_image">Remove current image</label>
+                        </div>
+                        @endif
+                        <input type="file" class="form-control @error('image') is-invalid @enderror"
+                               id="image" name="image" accept="image/jpeg,image/png,image/jpg,image/webp" />
+                        @error('image') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                        <div class="form-text">Upload a new image to replace the current one. Max 2 MB.</div>
+                    </div>
+
                     <div class="mb-4">
                         <label class="form-label fw-semibold" for="deadline">Review By Date (optional)</label>
                         <input type="date" class="form-control @error('deadline') is-invalid @enderror"
@@ -77,9 +103,10 @@
                     </div>
 
                     <div class="d-flex gap-2">
-                        <button type="submit" class="btn btn-dark">Save Changes</button>
-                        <a href="{{ route('admin.index', ['key' => request('key')]) }}"
-                           class="btn btn-outline-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg me-1"></i> Save Changes
+                        </button>
+                        <a href="{{ route('admin.index') }}" class="btn btn-outline-secondary">Cancel</a>
                     </div>
                 </form>
             </div>

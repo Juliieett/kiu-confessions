@@ -2,8 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Category;
 use App\Models\Confession;
+use App\Models\Like;
+use App\Models\Tag;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 /**
  * ConfessionController
@@ -15,77 +19,98 @@ use Illuminate\Http\Request;
  */
 class ConfessionController extends Controller
 {
-    // ─── READ: List Approved Confessions ──────────────────────────────────────
+    private function visitorIpHash(Request $request): string
+    {
+        return hash('sha256', $request->ip());
+    }
 
-    /**
-     * Display the public confession feed.
-     * Supports filtering by category and status toggle (approved by default).
-     */
     public function index(Request $request)
     {
-        // Start with approved confessions only
-        $query = Confession::approved()->latest();
+        $ipHash = $this->visitorIpHash($request);
 
-        // Filter by category if provided
-        if ($request->filled('category')) {
-            $query->where('category', $request->category);
+        $query = Confession::approved()
+            ->with(['category', 'tags', 'referencedConfession'])
+            ->withCount(['likes', 'comments'])
+            ->latest();
+
+        if ($request->filled('category_id')) {
+            $query->where('category_id', $request->category_id);
         }
 
-        // Paginate: 10 per page
         $confessions = $query->paginate(10)->withQueryString();
+        $categories = Category::orderBy('name')->get();
 
-        // Pass all category options for the filter dropdown
-        $categories = Confession::categories();
+        $likedIds = auth()->check()
+            ? Like::where('user_id', auth()->id())
+                ->whereIn('confession_id', $confessions->pluck('id'))
+                ->pluck('confession_id')
+                ->all()
+            : Like::whereNull('user_id')
+                ->where('ip_hash', $ipHash)
+                ->whereIn('confession_id', $confessions->pluck('id'))
+                ->pluck('confession_id')
+                ->all();
 
-        return view('confessions.index', compact('confessions', 'categories'));
+        return view('confessions.index', compact('confessions', 'categories', 'ipHash', 'likedIds'));
     }
 
-    // ─── READ: Single Confession ───────────────────────────────────────────────
-
-    /**
-     * Display a single approved confession.
-     */
-    public function show(Confession $confession)
+    public function show(Request $request, Confession $confession)
     {
-        // Only show approved confessions publicly; others return 404
         abort_unless($confession->status === Confession::STATUS_APPROVED, 404);
 
-        return view('confessions.show', compact('confession'));
+        $ipHash = $this->visitorIpHash($request);
+
+        $confession->load([
+            'category',
+            'tags',
+            'referencedConfession',
+            'comments' => fn ($q) => $q->latest(),
+        ])->loadCount(['likes', 'comments']);
+
+        $isLiked = $confession->isLikedBy(auth()->id(), auth()->check() ? null : $ipHash);
+
+        return view('confessions.show', compact('confession', 'ipHash', 'isLiked'));
     }
 
-    // ─── CREATE: Submission Form ───────────────────────────────────────────────
-
-    /**
-     * Show the anonymous confession submission form.
-     */
-    public function create()
+    public function create(Request $request)
     {
-        $categories = Confession::categories();
-        return view('confessions.create', compact('categories'));
+        $categories = Category::orderBy('name')->get();
+        $tags = Tag::orderBy('name')->get();
+        $replyTo = $request->query('reply_to');
+
+        return view('confessions.create', compact('categories', 'tags', 'replyTo'));
     }
 
-    /**
-     * Store a newly submitted confession.
-     * All confessions start as "pending" – admin must approve.
-     */
     public function store(Request $request)
     {
-        // Validate input
         $validated = $request->validate([
-            'title'       => 'required|string|max:150',
-            'description' => 'required|string|min:10|max:2000',
-            'category'    => 'required|string|in:' . implode(',', Confession::categories()),
-            'deadline'    => 'nullable|date|after_or_equal:today',
+            'title'                    => 'required|string|max:150',
+            'description'              => 'required|string|min:10|max:2000',
+            'category_id'              => ['required', Rule::exists('categories', 'id')],
+            'referenced_confession_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('confessions', 'id')->where('status', Confession::STATUS_APPROVED),
+            ],
+            'tags'         => 'nullable|array',
+            'tags.*'       => [Rule::exists('tags', 'id')],
+            'deadline'     => 'nullable|date|after_or_equal:today',
+            'image'        => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
         ]);
 
-        // All new submissions are pending by default
+        $tagIds = $validated['tags'] ?? [];
+        unset($validated['tags']);
+
         $validated['status']  = Confession::STATUS_PENDING;
-        // Store hashed IP to help admin spot spam (never stored in plain text)
-        $validated['ip_hash'] = hash('sha256', $request->ip());
+        $validated['ip_hash'] = $this->visitorIpHash($request);
 
-        Confession::create($validated);
+        if ($request->hasFile('image')) {
+            $validated['image_path'] = $request->file('image')->store('confessions', 'public');
+        }
 
-        // Redirect back with a success flash message
+        $confession = Confession::create($validated);
+        $confession->tags()->sync($tagIds);
+
         return redirect()->route('confessions.index')
             ->with('success', '🎉 Your confession was submitted anonymously! It will appear after admin review.');
     }

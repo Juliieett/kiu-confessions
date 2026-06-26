@@ -4,52 +4,58 @@
 
 @section('content')
 
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <div>
-        <h4 class="mb-0">Admin Panel</h4>
-        <small class="text-muted">Moderate confessions — approve, reject, edit, or delete.</small>
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+    <div class="page-header mb-0">
+        <h4><i class="bi bi-shield-check text-primary me-2"></i>Admin Panel</h4>
+        <p class="text-muted mb-0">Moderate confessions — approve, reject, edit, or delete.</p>
     </div>
-    <a href="{{ route('confessions.index') }}" class="btn btn-sm btn-outline-secondary">View Public Feed</a>
+    <a href="{{ route('confessions.index') }}" class="btn btn-outline-primary">
+        <i class="bi bi-eye me-1"></i> View Public Feed
+    </a>
 </div>
 
-{{-- Status tabs --}}
-<ul class="nav nav-tabs mb-3">
+<ul class="nav nav-tabs nav-tabs-kiu mb-4">
     @php
         $tabs = ['all' => 'All', 'pending' => 'Pending', 'approved' => 'Approved', 'rejected' => 'Rejected'];
     @endphp
     @foreach($tabs as $key => $label)
     <li class="nav-item">
         <a class="nav-link {{ $statusFilter === $key ? 'active' : '' }}"
-           href="{{ route('admin.index', ['key' => request('key'), 'status' => $key]) }}">
+           href="{{ route('admin.index', ['status' => $key]) }}">
             {{ $label }}
-            <span class="badge bg-secondary ms-1">{{ $counts[$key] }}</span>
+            <span class="badge {{ $statusFilter === $key ? 'bg-primary' : 'bg-secondary' }} ms-1">
+                {{ $counts[$key] }}
+            </span>
         </a>
     </li>
     @endforeach
 </ul>
 
-{{-- Category filter --}}
-<form method="GET" action="{{ route('admin.index') }}" class="d-flex gap-2 mb-3">
-    <input type="hidden" name="key" value="{{ request('key') }}" />
-    <input type="hidden" name="status" value="{{ $statusFilter }}" />
-    <select name="category" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
-        <option value="">All Categories</option>
-        @foreach($categories as $cat)
-        <option value="{{ $cat }}" {{ request('category') === $cat ? 'selected' : '' }}>{{ $cat }}</option>
-        @endforeach
-    </select>
-    @if(request('category'))
-    <a href="{{ route('admin.index', ['key' => request('key'), 'status' => $statusFilter]) }}"
-       class="btn btn-sm btn-outline-secondary">Clear</a>
-    @endif
-</form>
+<div class="filter-bar d-flex flex-wrap align-items-center gap-2 mb-4">
+    <form method="GET" action="{{ route('admin.index') }}" class="d-flex align-items-center gap-2">
+        <input type="hidden" name="status" value="{{ $statusFilter }}" />
+        <label class="text-muted small mb-0"><i class="bi bi-funnel"></i></label>
+        <select name="category_id" class="form-select form-select-sm" style="width: auto;" onchange="this.form.submit()">
+            <option value="">All Categories</option>
+            @foreach($categories as $category)
+            <option value="{{ $category->id }}" {{ request('category_id') == $category->id ? 'selected' : '' }}>
+                {{ $category->name }}
+            </option>
+            @endforeach
+        </select>
+        @if(request('category_id'))
+        <a href="{{ route('admin.index', ['status' => $statusFilter]) }}"
+           class="btn btn-sm btn-outline-secondary">Clear</a>
+        @endif
+    </form>
+</div>
 
-{{-- Table --}}
 <div class="table-responsive">
-    <table class="table table-bordered table-hover bg-white align-middle">
-        <thead class="table-dark">
+    <table class="table table-kiu table-hover align-middle mb-0">
+        <thead>
             <tr>
                 <th>#</th>
+                <th>Post</th>
                 <th>Title</th>
                 <th>Category</th>
                 <th>Status</th>
@@ -61,12 +67,22 @@
         <tbody>
         @forelse($confessions as $confession)
         <tr>
-            <td>{{ $confession->id }}</td>
+            <td class="text-muted small">{{ $confession->id }}</td>
+            <td><span class="post-number-badge">{{ $confession->postNumber() }}</span></td>
             <td>
-                <div>{{ $confession->title }}</div>
+                <div class="fw-semibold">{{ $confession->title }}</div>
                 <small class="text-muted">{{ Str::limit($confession->description, 80) }}</small>
+                @if($confession->referencedConfession)
+                <small class="d-block text-primary">↳ Reply to {{ $confession->referencedConfession->postNumber() }}</small>
+                @endif
+                <small class="d-block text-muted">
+                    <i class="bi bi-heart"></i> {{ $confession->likes_count }}
+                    &middot; <i class="bi bi-chat"></i> {{ $confession->comments_count }}
+                </small>
             </td>
-            <td><span class="badge bg-secondary">{{ $confession->category }}</span></td>
+            <td>
+                @include('partials.confession-badges', ['confession' => $confession, 'fallback' => '—'])
+            </td>
             <td>
                 <span class="badge {{ $confession->statusBadgeClass() }}">
                     {{ $confession->statusLabel() }}
@@ -82,44 +98,48 @@
                     <span class="text-muted">—</span>
                 @endif
             </td>
-            <td><small>{{ $confession->created_at->format('M d, Y') }}</small></td>
+            <td><small class="text-muted">{{ $confession->created_at->format('M d, Y') }}</small></td>
             <td>
                 <div class="d-flex gap-1 flex-wrap">
-                    {{-- Approve --}}
                     @if($confession->status !== 'approved')
                     <form method="POST" action="{{ route('admin.approve', $confession) }}">
                         @csrf @method('PATCH')
-                        <input type="hidden" name="key" value="{{ request('key') }}" />
-                        <button class="btn btn-sm btn-success">Approve</button>
+                        <button class="btn btn-sm btn-success" title="Approve">
+                            <i class="bi bi-check-lg"></i>
+                        </button>
                     </form>
                     @endif
 
-                    {{-- Reject --}}
                     @if($confession->status !== 'rejected')
                     <form method="POST" action="{{ route('admin.reject', $confession) }}">
                         @csrf @method('PATCH')
-                        <input type="hidden" name="key" value="{{ request('key') }}" />
-                        <button class="btn btn-sm btn-warning">Reject</button>
+                        <button class="btn btn-sm btn-warning" title="Reject">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
                     </form>
                     @endif
 
-                    {{-- Edit --}}
-                    <a href="{{ route('admin.edit', [$confession, 'key' => request('key')]) }}"
-                       class="btn btn-sm btn-outline-secondary">Edit</a>
+                    <a href="{{ route('admin.edit', $confession) }}"
+                       class="btn btn-sm btn-outline-primary" title="Edit">
+                        <i class="bi bi-pencil"></i>
+                    </a>
 
-                    {{-- Delete --}}
                     <form method="POST" action="{{ route('admin.destroy', $confession) }}"
                           onsubmit="return confirm('Delete this confession permanently?')">
                         @csrf @method('DELETE')
-                        <input type="hidden" name="key" value="{{ request('key') }}" />
-                        <button class="btn btn-sm btn-outline-danger">Delete</button>
+                        <button class="btn btn-sm btn-outline-danger" title="Delete">
+                            <i class="bi bi-trash"></i>
+                        </button>
                     </form>
                 </div>
             </td>
         </tr>
         @empty
         <tr>
-            <td colspan="7" class="text-center text-muted py-4">No confessions found.</td>
+            <td colspan="8" class="text-center text-muted py-5">
+                <i class="bi bi-inbox fs-2 d-block mb-2 opacity-50"></i>
+                No confessions found.
+            </td>
         </tr>
         @endforelse
         </tbody>
@@ -127,7 +147,7 @@
 </div>
 
 @if($confessions->hasPages())
-<div class="d-flex justify-content-center mt-3">
+<div class="d-flex justify-content-center mt-4">
     {{ $confessions->appends(request()->except('page'))->links() }}
 </div>
 @endif

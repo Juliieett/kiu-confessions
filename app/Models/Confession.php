@@ -4,6 +4,10 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Confession Model
@@ -14,9 +18,9 @@ use Illuminate\Database\Eloquent\Model;
  * @property string      $title        Short subject/category of the confession
  * @property string      $description  The full confession text
  * @property string      $status       pending | approved | rejected
- * @property string|null $category     Optional tag (Study, Crush, Funny, Other)
+ * @property int|null    $category_id  Foreign key to categories table
  * @property \Carbon\Carbon|null $deadline  Admin review-by date (required by rubric)
- * @property \Carbon\Carbon $created_at
+ * @property string|null $image_path   Optional uploaded image path
  * @property \Carbon\Carbon $updated_at
  */
 class Confession extends Model
@@ -35,8 +39,11 @@ class Confession extends Model
         'title',
         'description',
         'status',
-        'category',
+        'category_id',
+        'referenced_confession_id',
         'deadline',
+        'ip_hash',
+        'image_path',
     ];
 
     /**
@@ -78,7 +85,81 @@ class Confession extends Model
         return $query->where('status', self::STATUS_REJECTED);
     }
 
+    // ─── Relationships ─────────────────────────────────────────────────────────
+
+    /**
+     * Many confessions belong to one category.
+     */
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(Category::class);
+    }
+
+    /**
+     * Many-to-many: a confession can have many tags.
+     */
+    public function tags(): BelongsToMany
+    {
+        return $this->belongsToMany(Tag::class);
+    }
+
+    /**
+     * Confession this post is replying to (optional).
+     */
+    public function referencedConfession(): BelongsTo
+    {
+        return $this->belongsTo(Confession::class, 'referenced_confession_id');
+    }
+
+    /**
+     * Other confessions that reference this post.
+     */
+    public function referencingConfessions(): HasMany
+    {
+        return $this->hasMany(Confession::class, 'referenced_confession_id');
+    }
+
+    /**
+     * Likes on this confession.
+     */
+    public function likes(): HasMany
+    {
+        return $this->hasMany(Like::class);
+    }
+
+    /**
+     * Comments on this confession.
+     */
+    public function comments(): HasMany
+    {
+        return $this->hasMany(Comment::class);
+    }
+
     // ─── Helpers ───────────────────────────────────────────────────────────────
+
+    /**
+     * Public post number shown to students (same as database id).
+     */
+    public function postNumber(): string
+    {
+        return '#' . $this->id;
+    }
+
+    /**
+     * Whether this post is liked by the current visitor.
+     */
+    public function isLikedBy(?int $userId, ?string $ipHash): bool
+    {
+        if ($userId) {
+            return $this->likes()->where('user_id', $userId)->exists();
+        }
+
+        if (! $ipHash) {
+            return false;
+        }
+
+        return $this->likes()->whereNull('user_id')->where('ip_hash', $ipHash)->exists();
+    }
 
     /**
      * Returns a Bootstrap badge class based on current status.
@@ -105,10 +186,23 @@ class Confession extends Model
     }
 
     /**
-     * Available category options.
+     * Public URL for the confession image, if one was uploaded.
      */
-    public static function categories(): array
+    public function imageUrl(): ?string
     {
-        return ['Study Life', 'Crush', 'Funny', 'Serious', 'Professor', 'Other'];
+        return $this->image_path
+            ? asset('storage/' . $this->image_path)
+            : null;
     }
+
+    /**
+     * Remove the stored image file from disk.
+     */
+    public function deleteImage(): void
+    {
+        if ($this->image_path) {
+            Storage::disk('public')->delete($this->image_path);
+        }
+    }
+
 }
